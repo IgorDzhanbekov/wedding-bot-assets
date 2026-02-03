@@ -76,6 +76,20 @@ def build_keyboard(options: set[str]) -> InlineKeyboardMarkup:
 
     return keyboard
 
+def restart_keyboard() -> InlineKeyboardMarkup:
+    keyboard = InlineKeyboardMarkup()
+    keyboard.add(
+        InlineKeyboardButton("🔄 Начать заново", callback_data=RESTART)
+    )
+    return keyboard
+
+def send_restart_message(chat_id: int) -> None:
+    bot.send_message(
+        chat_id,
+        "Если захочешь вернуться — я всегда здесь 🤍",
+        reply_markup=restart_keyboard()
+    )
+
 
 # =========================
 # Handlers
@@ -223,25 +237,25 @@ def wedding_reveal(call):
     keyboard.add(
         InlineKeyboardButton("😔 К сожалению, не смогу", callback_data=CANT_COME)
     )
-    keyboard.add(
-        InlineKeyboardButton("🔄 Начать заново", callback_data=RESTART)
-    )
 
     bot.send_message(
         chat_id,
         (
             "Мы будем очень рады,\n"
             "если ты станешь частью\n"
-            "этого путешествия 🤍\n\n"
-            "Если захочешь вернуться — просто нажми «Начать заново»."
+            "этого путешествия 🤍"
         ),
         reply_markup=keyboard,
     )
+
+    send_restart_message(chat_id)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == CANT_COME)
 def cant_come(call):
     bot.answer_callback_query(call.id)
+
+    chat_id = call.message.chat.id
 
     bot.edit_message_text(
         (
@@ -252,9 +266,11 @@ def cant_come(call):
             "а этот бот всегда будет\n"
             "рад видеть тебя здесь."
         ),
-        call.message.chat.id,
+        chat_id,
         call.message.message_id,
     )
+
+    send_restart_message(chat_id)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == RESTART)
