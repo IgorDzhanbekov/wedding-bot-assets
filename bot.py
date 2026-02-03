@@ -76,20 +76,6 @@ def build_keyboard(options: set[str]) -> InlineKeyboardMarkup:
 
     return keyboard
 
-def restart_keyboard() -> InlineKeyboardMarkup:
-    keyboard = InlineKeyboardMarkup()
-    keyboard.add(
-        InlineKeyboardButton("🔄 Начать заново", callback_data=RESTART)
-    )
-    return keyboard
-
-def send_restart_message(chat_id: int) -> None:
-    bot.send_message(
-        chat_id,
-        "Если захочешь вернуться — я всегда здесь 🤍",
-        reply_markup=restart_keyboard()
-    )
-
 
 # =========================
 # Handlers
@@ -150,8 +136,7 @@ def first_choice(call):
             "Тишина и природа — понятный выбор 🌲\n\n"
             "Иногда хочется просто\n"
             "остановиться и сменить ритм.\n\n"
-            "А если найти это\n"
-            "в новом месте?"
+            "А если найти это в новом месте?"
         )
         keyboard = InlineKeyboardMarkup()
         keyboard.add(
@@ -170,8 +155,7 @@ def first_choice(call):
         "Но по-настоящему запоминающимся\n"
         "оно становится тогда,\n"
         "когда рядом близкие люди\n"
-        "и вас объединяет\n"
-        "важное событие."
+        "и вас объединяет важное событие."
     )
 
     bot.edit_message_text(travel_text, chat_id, call.message.message_id)
@@ -219,9 +203,9 @@ def wedding_reveal(call):
     chat_id = call.message.chat.id
 
     poetic_sequence = [
-        "Есть даты,\nкоторые не случайны\n\n14 августа —\nодна из них",
-        "И есть места,\nособенные места\n\nПрага —\nименно такое",
-        "И совсем скоро\nтам начнётся\nчто-то важное",
+        "Есть даты,\nкоторые не случайны\n\n14 августа — одна из них",
+        "И есть места,\nособенные места\n\nПрага — именно такое",
+        "И совсем скоро\nтам начнётся что-то важное",
     ]
 
     for text in poetic_sequence:
