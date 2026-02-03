@@ -32,7 +32,6 @@ LOOK_PREFIX = "look_"
 
 AUGUST_YES = "august_yes"
 AUGUST_NO = "august_no"
-RESTART = "restart"
 CANT_COME = "cant_come"
 
 # =========================
@@ -100,13 +99,6 @@ def start(message):
         ),
         reply_markup=build_keyboard(user_state[message.chat.id]),
     )
-
-
-@bot.message_handler(commands=["restart"])
-def restart(message):
-    reset_user_state(message.chat.id)
-    start(message)
-
 
 @bot.callback_query_handler(func=lambda call: call.data in {SEA, NATURE, TRAVEL})
 def first_choice(call):
@@ -232,8 +224,6 @@ def wedding_reveal(call):
         reply_markup=keyboard,
     )
 
-    send_restart_message(chat_id)
-
 
 @bot.callback_query_handler(func=lambda call: call.data == CANT_COME)
 def cant_come(call):
@@ -253,15 +243,6 @@ def cant_come(call):
         chat_id,
         call.message.message_id,
     )
-
-    send_restart_message(chat_id)
-
-
-@bot.callback_query_handler(func=lambda call: call.data == RESTART)
-def restart_callback(call):
-    bot.answer_callback_query(call.id)
-    reset_user_state(call.message.chat.id)
-    start(call.message)
 
 
 print("🤖 Bot is running...")
