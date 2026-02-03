@@ -45,6 +45,10 @@ def start(message):
         reply_markup=build_keyboard(user_state[message.chat.id])
     )
 
+@bot.message_handler(commands=["restart"])
+def restart(message):
+    user_state.pop(message.chat.id, None)
+    start(message)
 
 @bot.callback_query_handler(func=lambda call: call.data in ["sea", "nature", "travel"])
 def first_choice(call):
@@ -163,7 +167,7 @@ def cant_come(call):
         "и мы это прекрасно понимаем.\n\n"
         "До августа ещё есть время —\n"
         "а этот бот всегда будет\n"
-        "рады видеть тебя здесь.",
+        "рад видеть тебя здесь.",
         call.message.chat.id,
         call.message.message_id
     )
