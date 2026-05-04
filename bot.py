@@ -1,4 +1,5 @@
-import os
+﻿import os
+import threading
 import time
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -11,14 +12,17 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN is not set in environment variables")
 
-RSVP_LINK = (
+RSVP_YES_LINK = os.getenv(
+    "RSVP_YES_LINK",
     "https://docs.google.com/forms/d/e/"
     "1FAIpQLSdP1mL3VA5soWdIW6t24axo2ikkHAoWhPryXQJoURzoIyqhtw/viewform"
 )
+RSVP_MAYBE_LINK = os.getenv("RSVP_MAYBE_LINK", RSVP_YES_LINK)
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+INVITE_IMAGE_PATH = os.path.join(BASE_DIR, "Invite.png")
 
 # =========================
 # Constants
@@ -33,6 +37,7 @@ LOOK_PREFIX = "look_"
 AUGUST_YES = "august_yes"
 AUGUST_NO = "august_no"
 CANT_COME = "cant_come"
+RSVP_MAYBE_CALLBACK = "rsvp_maybe_callback"
 
 # =========================
 # State Management
@@ -49,6 +54,24 @@ def default_options() -> set[str]:
 def reset_user_state(chat_id: int) -> None:
     """Resets user progress to initial state."""
     user_state[chat_id] = default_options()
+
+
+def send_invite_image(chat_id: int) -> None:
+    """Sends the invitation as a photo attachment."""
+    with open(INVITE_IMAGE_PATH, "rb") as image_file:
+        bot.send_photo(chat_id, image_file, caption="💍")
+
+
+def build_final_rsvp_keyboard() -> InlineKeyboardMarkup:
+    keyboard = InlineKeyboardMarkup()
+    keyboard.add(
+        InlineKeyboardButton("🥳 С удовольствием", url=RSVP_YES_LINK),
+        InlineKeyboardButton("🤔 Нужно подумать", callback_data=RSVP_MAYBE_CALLBACK),
+    )
+    keyboard.add(
+        InlineKeyboardButton("😔 К сожалению, не смогу", callback_data=CANT_COME)
+    )
+    return keyboard
 
 
 # =========================
@@ -176,6 +199,7 @@ def look_further(call):
     bot.answer_callback_query(call.id)
 
     chat_id = call.message.chat.id
+    user_state.setdefault(chat_id, default_options())
     removed_option = call.data.replace(LOOK_PREFIX, "")
     user_state[chat_id].discard(removed_option)
 
@@ -193,7 +217,38 @@ def wedding_reveal(call):
     bot.answer_callback_query(call.id)
 
     chat_id = call.message.chat.id
+    threading.Thread(
+        target=send_wedding_reveal_sequence,
+        args=(chat_id,),
+        daemon=True,
+    ).start()
 
+
+@bot.callback_query_handler(func=lambda call: call.data == RSVP_MAYBE_CALLBACK)
+def maybe_rsvp(call):
+    bot.answer_callback_query(call.id)
+
+    chat_id = call.message.chat.id
+    keyboard = InlineKeyboardMarkup()
+    keyboard.add(InlineKeyboardButton("Открыть форму", url=RSVP_MAYBE_LINK))
+
+    bot.send_message(
+        chat_id,
+        (
+            "Ничего страшного 🤍\n\n"
+            "Планы иногда меняются,\n"
+            "и это абсолютно нормально.\n\n"
+            "До августа ещё есть время —\n"
+            "а пока можешь заполнить форму,\n"
+            "чтобы мы оставались на связи.\n\n"
+            "Будем рады увидеть тебя,\n"
+            "если всё сложится ✨"
+        ),
+        reply_markup=keyboard,
+    )
+
+
+def send_wedding_reveal_sequence(chat_id: int) -> None:
     poetic_sequence = [
         "Есть даты,\nкоторые не случайны\n\n14 августа — одна из них",
         "И есть места,\nособенные места\n\nПрага — именно такое",
@@ -204,24 +259,17 @@ def wedding_reveal(call):
         bot.send_message(chat_id, text)
         time.sleep(2)
 
-    gif_path = os.path.join(BASE_DIR, "Invite.gif")
-    with open(gif_path, "rb") as gif:
-        bot.send_animation(chat_id, gif, caption="💍")
-
-    keyboard = InlineKeyboardMarkup()
-    keyboard.add(InlineKeyboardButton("💍 Я приду", url=RSVP_LINK))
-    keyboard.add(
-        InlineKeyboardButton("😔 К сожалению, не смогу", callback_data=CANT_COME)
-    )
+    send_invite_image(chat_id)
+    time.sleep(2)
 
     bot.send_message(
         chat_id,
         (
             "Мы будем очень рады,\n"
             "если ты станешь частью\n"
-            "этого путешествия 🤍"
+            "этого путешествия 💍"
         ),
-        reply_markup=keyboard,
+        reply_markup=build_final_rsvp_keyboard(),
     )
 
 
@@ -247,3 +295,6 @@ def cant_come(call):
 
 print("🤖 Bot is running...")
 bot.infinity_polling(skip_pending=True)
+
+
+
