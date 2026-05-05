@@ -1,8 +1,10 @@
-﻿import os
+﻿import logging
+import os
 import threading
 import time
+
 import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 # =========================
 # Environment & Bot Setup
@@ -15,11 +17,12 @@ if not BOT_TOKEN:
 RSVP_YES_LINK = os.getenv(
     "RSVP_YES_LINK",
     "https://docs.google.com/forms/d/e/"
-    "1FAIpQLSdP1mL3VA5soWdIW6t24axo2ikkHAoWhPryXQJoURzoIyqhtw/viewform"
+    "1FAIpQLSdP1mL3VA5soWdIW6t24axo2ikkHAoWhPryXQJoURzoIyqhtw/viewform",
 )
 RSVP_MAYBE_LINK = os.getenv("RSVP_MAYBE_LINK", RSVP_YES_LINK)
 
 bot = telebot.TeleBot(BOT_TOKEN)
+logger = logging.getLogger(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 INVITE_IMAGE_PATH = os.path.join(BASE_DIR, "Invite.png")
@@ -44,6 +47,8 @@ RSVP_MAYBE_CALLBACK = "rsvp_maybe_callback"
 # =========================
 
 user_state: dict[int, set[str]] = {}
+active_reveal_chats: set[int] = set()
+reveal_lock = threading.Lock()
 
 
 def default_options() -> set[str]:
@@ -68,9 +73,7 @@ def build_final_rsvp_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton("🥳 С удовольствием", url=RSVP_YES_LINK),
         InlineKeyboardButton("🤔 Нужно подумать", callback_data=RSVP_MAYBE_CALLBACK),
     )
-    keyboard.add(
-        InlineKeyboardButton("😔 К сожалению, не смогу", callback_data=CANT_COME)
-    )
+    keyboard.add(InlineKeyboardButton("😔 К сожалению, не смогу", callback_data=CANT_COME))
     return keyboard
 
 
@@ -78,23 +81,18 @@ def build_final_rsvp_keyboard() -> InlineKeyboardMarkup:
 # UI Builders
 # =========================
 
+
 def build_keyboard(options: set[str]) -> InlineKeyboardMarkup:
     keyboard = InlineKeyboardMarkup()
 
     if SEA in options:
-        keyboard.add(
-            InlineKeyboardButton("🌊 Море и солнце", callback_data=SEA)
-        )
+        keyboard.add(InlineKeyboardButton("🌊 Море и солнце", callback_data=SEA))
     if TRAVEL in options:
         keyboard.add(
-            InlineKeyboardButton(
-                "✈️ Путешествие и предвкушение", callback_data=TRAVEL
-            )
+            InlineKeyboardButton("✈️ Путешествие и предвкушение", callback_data=TRAVEL)
         )
     if NATURE in options:
-        keyboard.add(
-            InlineKeyboardButton("🌲 Тишина и природа", callback_data=NATURE)
-        )
+        keyboard.add(InlineKeyboardButton("🌲 Тишина и природа", callback_data=NATURE))
 
     return keyboard
 
@@ -102,6 +100,7 @@ def build_keyboard(options: set[str]) -> InlineKeyboardMarkup:
 # =========================
 # Handlers
 # =========================
+
 
 @bot.message_handler(commands=["start"])
 def start(message):
@@ -122,6 +121,7 @@ def start(message):
         ),
         reply_markup=build_keyboard(user_state[message.chat.id]),
     )
+
 
 @bot.callback_query_handler(func=lambda call: call.data in {SEA, NATURE, TRAVEL})
 def first_choice(call):
@@ -155,9 +155,7 @@ def first_choice(call):
         )
         keyboard = InlineKeyboardMarkup()
         keyboard.add(
-            InlineKeyboardButton(
-                "👀 Давай посмотрим", callback_data=f"{LOOK_PREFIX}{NATURE}"
-            )
+            InlineKeyboardButton("👀 Давай посмотрим", callback_data=f"{LOOK_PREFIX}{NATURE}")
         )
         bot.edit_message_text(text, chat_id, call.message.message_id, reply_markup=keyboard)
         return
@@ -217,6 +215,12 @@ def wedding_reveal(call):
     bot.answer_callback_query(call.id)
 
     chat_id = call.message.chat.id
+    with reveal_lock:
+        if chat_id in active_reveal_chats:
+            logger.info("Reveal sequence already active for chat_id=%s", chat_id)
+            return
+        active_reveal_chats.add(chat_id)
+
     threading.Thread(
         target=send_wedding_reveal_sequence,
         args=(chat_id,),
@@ -249,28 +253,37 @@ def maybe_rsvp(call):
 
 
 def send_wedding_reveal_sequence(chat_id: int) -> None:
-    poetic_sequence = [
-        "Есть даты,\nкоторые не случайны\n\n14 августа — одна из них",
-        "И есть места,\nособенные места\n\nПрага — именно такое",
-        "И совсем скоро\nтам начнётся что-то важное",
-    ]
+    try:
+        poetic_sequence = [
+            "Есть даты,\nкоторые не случайны\n\n14 августа — одна из них",
+            "И есть места,\nособенные места\n\nПрага — именно такое",
+            "И совсем скоро\nтам начнётся что-то важное",
+        ]
 
-    for text in poetic_sequence:
-        bot.send_message(chat_id, text)
+        for index, text in enumerate(poetic_sequence, start=1):
+            bot.send_message(chat_id, text)
+            logger.info("Reveal message %s sent for chat_id=%s", index, chat_id)
+            time.sleep(2)
+
+        send_invite_image(chat_id)
+        logger.info("Reveal invite image sent for chat_id=%s", chat_id)
         time.sleep(2)
 
-    send_invite_image(chat_id)
-    time.sleep(2)
-
-    bot.send_message(
-        chat_id,
-        (
-            "Мы будем очень рады,\n"
-            "если ты станешь частью\n"
-            "этого путешествия 💍"
-        ),
-        reply_markup=build_final_rsvp_keyboard(),
-    )
+        bot.send_message(
+            chat_id,
+            (
+                "Мы будем очень рады,\n"
+                "если ты станешь частью\n"
+                "этого путешествия 💍"
+            ),
+            reply_markup=build_final_rsvp_keyboard(),
+        )
+        logger.info("Reveal final message sent for chat_id=%s", chat_id)
+    except Exception:
+        logger.exception("Reveal sequence failed for chat_id=%s", chat_id)
+    finally:
+        with reveal_lock:
+            active_reveal_chats.discard(chat_id)
 
 
 @bot.callback_query_handler(func=lambda call: call.data == CANT_COME)
@@ -293,8 +306,6 @@ def cant_come(call):
     )
 
 
-print("🤖 Bot is running...")
-bot.infinity_polling(skip_pending=True)
-
-
-
+if __name__ == "__main__":
+    print("🤖 Bot is running...")
+    bot.infinity_polling(skip_pending=True)
